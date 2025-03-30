@@ -1,33 +1,29 @@
 import { ImageResponse } from "next/og";
 import { PROJECT_TITLE, PROJECT_DESCRIPTION } from "~/lib/constants";
-import { readFileSync } from "fs";
-import { join } from "path";
+// Removed: import { readFileSync } from "fs";
+// Removed: import { join } from "path";
 
 export const alt = PROJECT_TITLE;
 export const contentType = "image/png";
+export const runtime = 'edge'; // Required for OG images
 
-// Function to load font with error handling
-async function loadFont(fontPath: string): Promise<Buffer> {
+// Function to load font with error handling - Simplified for Edge runtime
+async function loadFont(fontPath: string): Promise<ArrayBuffer> {
   try {
-    const fontData = readFileSync(fontPath);
+    // Use fetch with new URL, which works in Edge runtime for public assets
+    const fontUrl = new URL(fontPath, import.meta.url);
+    const response = await fetch(fontUrl);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch font: ${response.status} ${response.statusText}`);
+    }
+    const fontData = await response.arrayBuffer();
     return fontData;
   } catch (error) {
-    // Fallback to loading from absolute path
-    try {
-      const absolutePath = join(
-        __dirname,
-        "..",
-        "..",
-        "public",
-        "fonts",
-        fontPath.split("/").pop()!
-      );
-      return readFileSync(absolutePath);
-    } catch (fallbackError) {
-      throw new Error(`Failed to load font ${fontPath}: ${error}`);
-    }
+    console.error(`Failed to load font from ${fontPath}: ${error}`);
+    throw new Error(`Failed to load font ${fontPath}: ${error}`);
   }
 }
+
 
 // Create reusable options object
 let imageOptions: any = null;
@@ -38,15 +34,15 @@ async function initializeFonts() {
 
   try {
     const regularFont = await loadFont(
-      join(process.cwd(), "public/fonts/Nunito-Regular.ttf")
+      "public/fonts/Nunito-Regular.ttf"
     );
     const semiBoldFont = await loadFont(
-      join(process.cwd(), "public/fonts/Nunito-SemiBold.ttf")
+      "public/fonts/Nunito-SemiBold.ttf"
     );
 
     imageOptions = {
       width: 1200,
-      height: 800,
+      height: 800, // Adjusted height for better text fit
       fonts: [
         {
           name: "Nunito",
@@ -65,18 +61,23 @@ async function initializeFonts() {
 
     return imageOptions;
   } catch (error) {
-    throw error;
+    console.error("Error initializing fonts:", error);
+    // Return default options or handle error appropriately
+    return {
+        width: 1200,
+        height: 800,
+    }
   }
 }
 
 export default async function Image() {
   const options = await initializeFonts();
 
-  const BACKGROUND_GRADIENT_START = "#c026d3";
-  const BACKGROUND_GRADIENT_END = "#ef4444";
+  const BACKGROUND_GRADIENT_START = "#4c1d95"; // Darker Purple
+  const BACKGROUND_GRADIENT_END = "#be185d"; // Darker Pink
   const BACKGROUND_GRADIENT_STYLE = {
     backgroundImage: `linear-gradient(to bottom, ${BACKGROUND_GRADIENT_START}, ${BACKGROUND_GRADIENT_END})`,
-    color: "white",
+    color: "white", // White text for contrast
   };
 
   /*
@@ -90,11 +91,18 @@ Please refer to Satori’s documentation for a list of supported HTML and CSS fe
   return new ImageResponse(
     (
       <div
-        tw="h-full w-full flex flex-col justify-center items-center relative"
+        tw="h-full w-full flex flex-col justify-center items-center relative p-10" // Added padding
         style={BACKGROUND_GRADIENT_STYLE}
       >
-        <h1 tw="text-9xl text-center font-semibold">{PROJECT_TITLE}</h1>
-        <h3 tw="text-4xl font-normal">{PROJECT_DESCRIPTION}</h3>
+        {/* Ensure fonts are loaded before rendering text */}
+        {options.fonts ? (
+          <>
+            <h1 tw="text-8xl text-center font-semibold mb-4" style={{ fontFamily: 'Nunito' }}>{PROJECT_TITLE}</h1>
+            <h3 tw="text-4xl font-normal text-center" style={{ fontFamily: 'Nunito' }}>{PROJECT_DESCRIPTION}</h3>
+          </>
+        ) : (
+          <div tw="text-4xl">Loading Font...</div> // Fallback text
+        )}
       </div>
     ),
     options
